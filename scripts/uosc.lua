@@ -1073,6 +1073,57 @@ function ass_mt:circle(x, y, radius, opts)
 	self:rect(x - radius, y - radius, x + radius, y + radius, opts)
 end
 
+-- Stripes
+---@param ax number
+---@param ay number
+---@param bx number
+---@param by number
+---@param opts? {size?: number; color?: string; angle?: number; opacity?: number; ignore_ranges?: number[][]}
+function ass_mt:stripes(ax, ay, bx, by, opts)
+	opts = opts or {}
+	local width, height = bx - ax,  by - ay
+	local base = '\\pos(0,0)\\bord0\\blur0' .. string.format('\\alpha&H%X&', opacity_to_alpha(opts.opacity or 0.2))
+
+	local clip_path = assdraw.ass_new()
+	local ignore_ranges = opts.ignore_ranges or {{1, 1}}
+	local last_ibx = ax
+	local last_range_index = 0
+	while last_ibx < bx do
+		local range_index = last_range_index + 1
+		local range = ignore_ranges[range_index]
+		local iax, iay = last_ibx, ay
+		local ibx, iby = round(ax + width * (range and range[1] or 1)), by
+		clip_path:rect_cw(iax, iay, ibx, iby)
+		last_ibx = round(ax + width * (range and range[2] or 1))
+		last_range_index = range_index
+	end
+
+	local clip = '\\clip(' .. clip_path.scale .. ', ' .. clip_path.text .. ')'
+
+	-- Background
+	self:new_event()
+	self:append('{' .. base .. '\\1c&H000000' .. clip .. '}')
+	self:draw_start()
+	self:rect_cw(ax, ay, bx, by)
+
+	-- Lines
+	local size = opts.size or 2
+	local angle = opts.angle or (math.pi * 0.3)
+	local line_x_delta = (size * 2) / math.sin(angle)
+	local skew_amount = height / math.tan(angle)
+	local x = -width - round(skew_amount / line_x_delta) * line_x_delta
+
+	self:append('{\\1c&H' .. (opts.color or 'FFFFFF') .. '}')
+	while x < width do
+		self:move_to(x, by)
+		self:line_to(x + skew_amount, ay)
+		self:line_to(x + skew_amount + line_x_delta / 2, ay)
+		self:line_to(x + line_x_delta / 2, by)
+		x = x + line_x_delta
+	end
+	self:draw_stop()
+end
+
 --[[ ELEMENTS COLLECTION ]]
 
 local Elements = {itable = {}}
@@ -2850,6 +2901,8 @@ function Timeline:render()
 		end
 	end
 
+	ass:stripes(bax, fay, bbx, fby, {ignore_ranges = {{0.3, 0.6}}})
+
 	-- Time values
 	if text_opacity > 0 then
 		local opts = {size = self.font_size, opacity = math.min(options.timeline_opacity + 0.1, 1) * text_opacity}
@@ -2859,8 +2912,10 @@ function Timeline:render()
 			local elapsed_x = bax + spacing
 			local elapsed_y = fay + (size / 2)
 			opts.color = options.color_foreground_text
+			opts.border = 0
 			opts.clip = '\\clip(' .. foreground_coordinates .. ')'
 			ass:txt(elapsed_x, elapsed_y, 4, state.time_human, opts)
+			opts.border = 2
 			opts.color = options.color_background_text
 			opts.clip = '\\iclip(' .. foreground_coordinates .. ')'
 			ass:txt(elapsed_x, elapsed_y, 4, state.time_human, opts)
@@ -2871,9 +2926,11 @@ function Timeline:render()
 			local end_x = bbx - spacing
 			local end_y = fay + (size / 2)
 			opts.color = options.color_foreground_text
+			opts.border = 0
 			opts.clip = '\\clip(' .. foreground_coordinates .. ')'
 			ass:txt(end_x, end_y, 6, state.duration_or_remaining_time_human, opts)
 			opts.color = options.color_background_text
+			opts.border = 2
 			opts.clip = '\\iclip(' .. foreground_coordinates .. ')'
 			ass:txt(end_x, end_y, 6, state.duration_or_remaining_time_human, opts)
 		end
