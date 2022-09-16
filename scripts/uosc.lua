@@ -2897,18 +2897,20 @@ function Timeline:render()
 
 	-- Time values
 	if text_opacity > 0 then
-		local opts = {size = self.font_size, opacity = math.min(options.timeline_opacity + 0.1, 1) * text_opacity}
+		local opts = {
+			size = self.font_size, opacity = math.min(options.timeline_opacity + 0.1, 1) * text_opacity, border = 2
+		}
 
 		-- Elapsed time
 		if state.time_human then
 			local elapsed_x = bax + spacing
 			local elapsed_y = fay + (size / 2)
 			opts.color = options.color_foreground_text
-			opts.border = 0
+			opts.border_color = options.color_foreground
 			opts.clip = '\\clip(' .. foreground_coordinates .. ')'
 			ass:txt(elapsed_x, elapsed_y, 4, state.time_human, opts)
-			opts.border = 2
 			opts.color = options.color_background_text
+			opts.border_color = options.color_background
 			opts.clip = '\\iclip(' .. foreground_coordinates .. ')'
 			ass:txt(elapsed_x, elapsed_y, 4, state.time_human, opts)
 		end
@@ -2918,11 +2920,11 @@ function Timeline:render()
 			local end_x = bbx - spacing
 			local end_y = fay + (size / 2)
 			opts.color = options.color_foreground_text
-			opts.border = 0
+			opts.border_color = options.color_foreground
 			opts.clip = '\\clip(' .. foreground_coordinates .. ')'
 			ass:txt(end_x, end_y, 6, state.duration_or_remaining_time_human, opts)
 			opts.color = options.color_background_text
-			opts.border = 2
+			opts.border_color = options.color_background
 			opts.clip = '\\iclip(' .. foreground_coordinates .. ')'
 			ass:txt(end_x, end_y, 6, state.duration_or_remaining_time_human, opts)
 		end
