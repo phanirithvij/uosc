@@ -14,7 +14,7 @@ local utils = require('mp.utils')
 local msg = require('mp.msg')
 local osd = mp.create_osd_overlay('ass-events')
 local infinity = 1e309
-local quarter_pi_sin = math.sin(math.pi/4)
+local quarter_pi_sin = math.sin(math.pi / 4)
 
 --[[ BASE HELPERS ]]
 
@@ -157,7 +157,7 @@ local options = {
 	timeline_step = 5,
 	timeline_cached_ranges = '4e845c:0.8',
 	timeline_chapters = 'dots',
-	timeline_chapters_opacity = 0.2,
+	timeline_chapters_opacity = 0.6,
 	timeline_chapters_width = 6,
 
 	controls = 'menu,gap,subtitles,<has_audio,!audio>audio,<stream>stream-quality,gap,space,speed,space,shuffle,loop-playlist,loop-file,gap,prev,items,next,gap,fullscreen',
@@ -1073,55 +1073,30 @@ function ass_mt:circle(x, y, radius, opts)
 	self:rect(x - radius, y - radius, x + radius, y + radius, opts)
 end
 
--- Stripes
+-- Texture
 ---@param ax number
 ---@param ay number
 ---@param bx number
 ---@param by number
----@param opts? {size?: number; color?: string; angle?: number; opacity?: number; ignore_ranges?: number[][]}
-function ass_mt:stripes(ax, ay, bx, by, opts)
+---@param char string Texture font character.
+---@param opts? {size?: number; color?: string; angle?: number; opacity?: number; clip?: string}
+function ass_mt:texture(ax, ay, bx, by, char, opts)
 	opts = opts or {}
-	local width, height = bx - ax,  by - ay
-	local base = '\\pos(0,0)\\bord0\\blur0' .. string.format('\\alpha&H%X&', opacity_to_alpha(opts.opacity or 0.2))
-
-	local clip_path = assdraw.ass_new()
-	local ignore_ranges = opts.ignore_ranges or {{1, 1}}
-	local last_ibx = ax
-	local last_range_index = 0
-	while last_ibx < bx do
-		local range_index = last_range_index + 1
-		local range = ignore_ranges[range_index]
-		local iax, iay = last_ibx, ay
-		local ibx, iby = round(ax + width * (range and range[1] or 1)), by
-		clip_path:rect_cw(iax, iay, ibx, iby)
-		last_ibx = round(ax + width * (range and range[2] or 1))
-		last_range_index = range_index
+	local width = bx - ax
+	local clip = opts.clip or ('\\clip(' .. ax .. ',' .. ay .. ',' .. bx .. ',' .. by .. ')')
+	local char_size, opacity = opts.size or 100, opts.opacity or 0.2
+	local tby = by
+	local chars = string.rep(char, math.ceil(width / char_size))
+	while tby > ay do
+		for i = 1, 0, -1 do
+			local light = i == 0
+			self:txt(ax - i * 2, tby, 1, chars, {
+				font = 'textures', size = char_size, color = light and 'ffffff' or '000000', clip = clip,
+				opacity = light and opacity or math.min(1, opacity + 0.1),
+			})
+		end
+		tby = tby - char_size
 	end
-
-	local clip = '\\clip(' .. clip_path.scale .. ', ' .. clip_path.text .. ')'
-
-	-- Background
-	self:new_event()
-	self:append('{' .. base .. '\\1c&H000000' .. clip .. '}')
-	self:draw_start()
-	self:rect_cw(ax, ay, bx, by)
-
-	-- Lines
-	local size = opts.size or 2
-	local angle = opts.angle or (math.pi * 0.3)
-	local line_x_delta = (size * 2) / math.sin(angle)
-	local skew_amount = height / math.tan(angle)
-	local x = -width - round(skew_amount / line_x_delta) * line_x_delta
-
-	self:append('{\\1c&H' .. (opts.color or 'FFFFFF') .. '}')
-	while x < width do
-		self:move_to(x, by)
-		self:line_to(x + skew_amount, ay)
-		self:line_to(x + skew_amount + line_x_delta / 2, ay)
-		self:line_to(x + line_x_delta / 2, by)
-		x = x + line_x_delta
-	end
-	self:draw_stop()
 end
 
 --[[ ELEMENTS COLLECTION ]]
@@ -2399,7 +2374,7 @@ function Speed:render()
 
 			ass:rect(notch_x - notch_thickness, notch_ay, notch_x + notch_thickness, notch_by, {
 				color = options.color_foreground, border = 1, border_color = options.color_background,
-				opacity = math.min(1.2 - (math.abs((notch_x - ax - half_width) / half_width)), 1) * opacity
+				opacity = math.min(1.2 - (math.abs((notch_x - ax - half_width) / half_width)), 1) * opacity,
 			})
 		end
 	end
@@ -2797,6 +2772,11 @@ function Timeline:render()
 		end
 	end
 
+	local texture_opts = {size = 80, opacity = 0.4 - (0.2 * text_opacity)}
+	local texture_char = text_opacity > 0 and 'b' or 'a'
+	ass:texture(bax, fay, bbx / 4, fby, texture_char, texture_opts)
+	ass:texture(bbx / 2, fay, bbx, fby, texture_char, texture_opts)
+
 	-- Chapters
 	if (options.timeline_chapters ~= 'never'
 		and (state.chapters ~= nil and #state.chapters > 0 or state.ab_loop_a or state.ab_loop_b)
@@ -2807,7 +2787,7 @@ function Timeline:render()
 		local chapter_height, chapter_y
 		if options.timeline_chapters == 'dots' then
 			dots = true
-			chapter_height = math.min(chapter_width, (foreground_size / 2) + 1)
+			chapter_height = math.min(chapter_width, foreground_size)
 			chapter_y = fay + chapter_height / 2
 		elseif options.timeline_chapters == 'lines' then
 			chapter_height = size
@@ -2899,9 +2879,21 @@ function Timeline:render()
 			ass:rect(left_ax - 1, notch_ay, left_ax, bby, opts)
 			ass:rect(right_bx, notch_ay, right_bx + 1, bby, opts)
 		end
+--[[
+		local ignore_ranges = opts.ignore_ranges or {{1, 1}}
+		local last_ibx = ax
+		local last_range_index = 0
+		while last_ibx < bx do
+			local range_index = last_range_index + 1
+			local range = ignore_ranges[range_index]
+			local iax, iay = last_ibx, ay
+			local ibx, iby = round(ax + width * (range and range[1] or 1)), by
+			clip_path:rect_cw(iax, iay, ibx, iby)
+			last_ibx = round(ax + width * (range and range[2] or 1))
+			last_range_index = range_index
+		end
+]]
 	end
-
-	ass:stripes(bax, fay, bbx, fby, {ignore_ranges = {{0.3, 0.6}}})
 
 	-- Time values
 	if text_opacity > 0 then
@@ -3010,7 +3002,7 @@ function TopBarButton:render()
 	local width, height = self.bx - self.ax, self.by - self.ay
 	local icon_size = math.min(width, height) * 0.5
 	ass:icon(self.ax + width / 2, self.ay + height / 2, icon_size, self.icon, {
-		opacity = visibility, border = options.text_border
+		opacity = visibility, border = options.text_border,
 	})
 
 	return ass
@@ -4126,7 +4118,7 @@ mp.register_event('file-loaded', function()
 	parse_chapters()
 	local title_template = mp.get_property_native('title')
 	if title_template:sub(-6) == ' - mpv' then title_template = title_template:sub(1, -7) end
-	set_state('title', mp.command_native({"expand-text", title_template}))
+	set_state('title', mp.command_native({'expand-text', title_template}))
 end)
 mp.register_event('end-file ', function() set_state('title', nil) end)
 mp.observe_property('playback-time', 'number', create_state_setter('time', update_human_times))
